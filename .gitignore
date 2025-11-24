@@ -1,0 +1,15 @@
+﻿# Python / IDE
+.venv/
+__pycache__/
+*.pyc
+.vscode/
+.idea/
+
+# Data / outputs
+data/raw/
+data/processed/*.png
+notebooks/.ipynb_checkpoints/
+reports/figures/
+
+# Misc
+.DS_Store
