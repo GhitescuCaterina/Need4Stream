@@ -1,4 +1,3 @@
-# notebooks/build_index.py
 from pathlib import Path
 import pandas as pd
 import numpy as np
@@ -16,7 +15,6 @@ def zscore(s: pd.Series):
     return (s - m) / sd
 
 def build_fragmentation(hhi):
-    # higher fragmentation when HHI is low
     return 1.0 - (hhi - np.nanmin(hhi)) / (np.nanmax(hhi) - np.nanmin(hhi) + 1e-9)
 
 def make_proxy_piracy(df):
@@ -63,18 +61,14 @@ def main():
         raise SystemExit(f"Missing: {INP}")
     panel = pd.read_csv(INP, parse_dates=["date"])
     if "country" not in panel.columns:
-        # Single-country fallback: add a dummy
         panel["country"] = "Romania"
 
-    # Minimal cleaning
     for c in ["CPI","PriceBasket","HHI_titles","ExclusivityShare","FragmentationIndex","Income"]:
         if c in panel.columns:
             panel[c] = pd.to_numeric(panel[c], errors="coerce")
 
-    # If FragmentationIndex not present, derive from HHI_titles
     if "FragmentationIndex" not in panel.columns or panel["FragmentationIndex"].isna().all():
         if "HHI_titles" in panel.columns and panel["HHI_titles"].notna().any():
-            # 1 - normalized HHI
             g = panel.groupby("country", group_keys=False)
             panel["FragmentationIndex"] = g["HHI_titles"].apply(build_fragmentation)
         else:
@@ -84,44 +78,36 @@ def main():
     for country, g in panel.groupby("country"):
         g = g.sort_values("date").copy()
 
-        # Trim to real price coverage
         if "PriceBasket" in g.columns and g["PriceBasket"].notna().any():
             start = g.loc[g["PriceBasket"].notna(), "date"].min()
             end   = g.loc[g["PriceBasket"].notna(), "date"].max()
             g = g[(g["date"] >= start) & (g["date"] <= end)].copy()
         else:
-            continue  # no price coverage → skip country
+            continue 
 
-        # Forward-only smoothing (no backfill to the past)
         for c in ["CPI","PriceBasket","HHI_titles","ExclusivityShare","FragmentationIndex","Income"]:
             if c in g.columns:
                 g[c] = pd.to_numeric(g[c], errors="coerce")
                 g[c] = g[c].interpolate(limit_direction="forward").ffill()
 
-        # Time feats
         g = add_time_feats(g)
 
-        # Fragmentation from HHI if missing
         if ("FragmentationIndex" not in g.columns) or g["FragmentationIndex"].isna().all():
             if "HHI_titles" in g.columns and g["HHI_titles"].notna().any():
                 g["FragmentationIndex"] = (1 - (g["HHI_titles"] - g["HHI_titles"].min()) /
                                             (g["HHI_titles"].max() - g["HHI_titles"].min() + 1e-9))
 
-        # Target (proxy) if missing/empty
         if "PiracyIndex" not in g.columns or g["PiracyIndex"].isna().all():
             g["PiracyIndex"] = make_proxy_piracy(g)
 
-        # Drop if constant target after build
         if g["PiracyIndex"].nunique(dropna=True) < 2:
             continue
 
-        # Lags
         g = add_lags_roll(g, "PiracyIndex", lags=(1,2,3), roll=3)
         if "PriceBasket" in g.columns:
             for L in (1,2,3):
                 g[f"PriceBasket_lag{L}"] = g["PriceBasket"].shift(L)
 
-        # Events default to 0
         for ev in ["event_price_hike","event_dns_block","event_major_release"]:
             if ev not in g.columns:
                 g[ev] = 0
@@ -129,7 +115,7 @@ def main():
         out_rows.append(g)
 
     final = (pd.concat(out_rows, ignore_index=True)
-            .dropna(subset=["PiracyIndex"])  # ensure target present
+            .dropna(subset=["PiracyIndex"])  
             .sort_values(["country","date"]))
     final.to_csv(OUT, index=False)
     print(f"Saved: {OUT}")

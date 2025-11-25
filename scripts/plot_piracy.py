@@ -1,4 +1,3 @@
-# scripts/plot_piracy.py
 import argparse
 from pathlib import Path
 import pandas as pd
@@ -44,7 +43,6 @@ def main(csv_path: str, country: str):
     csv = Path(csv_path)
     outdir = csv.parent
     df = pd.read_csv(csv, parse_dates=["date"])
-    # minimal sanity
     for c in ("date","country","PiracyIndex"):
         if c not in df.columns:
             raise SystemExit(f"Missing '{c}' in {csv}")
